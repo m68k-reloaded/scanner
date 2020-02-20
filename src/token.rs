@@ -2,26 +2,28 @@
 pub struct Range(pub u16, pub u16);
 
 impl Range {
-    fn len(self) -> u16 {
+    pub fn len(self) -> u16 {
         self.1 - self.0
     }
 }
 
 pub enum Token {
-    OpeningParen(Range),
-    ClosingParen(Range),
-    Comma(Range),
-    Dot(Range),
-    Minus(Range),
-    Plus(Range),
-    NumberSign(Range), // #
-    Colon(Range),      // :
+    // Single characters.
+    OpeningParen(Range), // (
+    ClosingParen(Range), // )
+    Comma(Range),        // ,
+    Dot(Range),          // .
+    Minus(Range),        // -
+    Plus(Range),         // +
+    NumberSign(Range),   // #
+    Colon(Range),        // :
 
     // Literals.
     Comment(Range, String),
     Identifier(Range, String),
     Number(Range, u32),
 
+    // Whitespace.
     Whitespace(Range),
     Newline(Range),
 }
