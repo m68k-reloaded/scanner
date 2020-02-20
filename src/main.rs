@@ -1,155 +1,131 @@
+mod token;
+
+use token::Range;
+use token::Token;
+
 fn main() {
     println!("Hello, world!");
 }
 
+fn scan(source: &str, errors: Vec<String>) -> Vec<Token> {
+    let tokens = Vec::new();
+    let state = ScannerState::new(source);
+
+    while !state.is_at_end() {
+        match scan_next_token(state) {
+            Ok(token) => tokens.push(token),
+            Err(error) => errors.push(error),
+        }
+    }
+
+    tokens
+}
+
 struct ScannerState {
     source: String,
-    start: u8,
-    line: u8,
-    column: u8,
-    current: u8,
-    tokens: Vector<Token>,
+
+    start: u16,
+    current: u16,
 }
 
 impl ScannerState {
-    fn new(source: String) -> ScannerState {
+    fn new(source: &str) -> ScannerState {
         ScannerState {
-            source,
-            start: 0,
-            line: 1,
-            column: 1,
-            current: 0,
-            tokens: Vector<Token>(),
+            source: String::from(source),
+            start: 1,
+            current: 1,
         }
     }
 
-    fn locationWithZeroLength(&self) -> Location {
-        Location {
-            line,
-            column,
-            length: 0,
-        }
+    fn is_at_end(self) -> bool {
+        usize::from(self.current) >= self.source.len()
     }
 
-    fn isAtEnd() -> bool {
-        current >= source.length
+    fn start_new_token_parsing(&self) {
+        self.start = self.current;
     }
 
-    fn peek() -> bool {
-        if isAtEnd() {
+    fn lexeme(self) -> String {
+        String::from(&(self.source)[self.start..self.current])
+    }
+
+    fn range(self) -> Range {
+        Range(self.start, self.current)
+    }
+
+    fn peek(self) -> char {
+        if self.is_at_end() {
             '\0'
         } else {
-            source[current]
+            self.source.bytes()[self.current]
         }
     }
 
-    fn currentLexeme() -> String {
-        source[start .. current]
+    fn advance(&self) -> char {
+        self.current += 1;
+        self.source[self.current]
     }
 
-    fn advance() -> char {
-        current += 1;
-        source[current]
-    }
-
-    fn advanceWhile() {
-        /*String advanceWhile(bool Function(String char) predicate) {
-            while (predicate(peek()) && !isAtEnd) {
-            advance();
-            }
-            return source.substring(start, current);
-        }*/
-    }
-
-    fn addToken(token: Token) {
-        /*tokens.add(Token(
-            type: type,
-            location: location.copyWith(length: currentLexeme.length),
-            lexeme: currentLexeme,
-        ));*/
-        tokens.add(token);
-        column += current - start;
-        start = current;
+    fn advance_while<Test>(&self, test: Test) -> String
+    where
+        Test: Fn(char) -> bool,
+    {
+        while test(self.peek()) {
+            self.advance();
+        }
+        self.source[self.start..self.current]
     }
 }
 
-fn scan(source: String, errorCollector: ErrorCollector) -> Vector<Token> {
-    let state = ScannerState::new(source);
-
-    while !state.isAtEnd() {
-        scanNextToken(state, errorCollector);
-    }
-
-    state.tokens
-}
-
-fn scanNextToken(state: ScannerState, errorCollector: ErrorCollector) {
-    let location = state.locationWithZeroLength();
+fn scan_next_token(state: ScannerState) -> Result<Token, String> {
+    state.start_new_token_parsing();
+    let range = state.range();
 
     match (state.advance(), state.peek()) {
-        ('(', _) => state.addToken(Token::OpeningParen(location)),
-        (')', _) => state.addToken(Token::ClosingParen(location)),
-        (',', _) => state.addToken(Token::Comma(location)),
-        ('.', _) => state.addToken(Token::Dot(location)),
-        ('+', _) => state.addToken(Token::Plus(location)),
-        ('#', _) => state.addToken(Token::NumberSign(location)),
-        (':', _) => state.addToken(Token::Colon(location)),
-        ('0'..='9', _) | ('-', '0'..='9') => parseDecimalNumber(state),
-        ('$', _) => parseHexNumber(state),
-        ('-', _) => state.addToken(Token::Minus(location)),
-        ('*', _) => parseComment(state),
-        (' ' | '\t', _) => {
-            state.addToken(Tokens::Whitespace(location));
-            state.col += 1;
-            state.start = start.current;
-        },
-        ('\r' | '\n', _) => {
-            if state.currentToken() == '\r' {
-                
-            }
-            state.addToken(Token::Newline(location));
-            state.line += 1;
-            state.start = state.current;
-            state.col = 1;
-        },
-        ('a'..'z' | 'A'..'Z' | '0'..'9' | '_', _) => parseIdentifier(state),
-        _ => errorCollector.addError(...),
+        ('(', _) => Ok(Token::OpeningParen(range)),
+        (')', _) => Ok(Token::ClosingParen(range)),
+        (',', _) => Ok(Token::Comma(range)),
+        ('.', _) => Ok(Token::Dot(range)),
+        ('+', _) => Ok(Token::Plus(range)),
+        ('#', _) => Ok(Token::NumberSign(range)),
+        (':', _) => Ok(Token::Colon(range)),
+        ('0'..='9', _) | ('-', '0'..='9') => parse_decimal_number(state),
+        ('$', _) => parse_hex_number(state),
+        ('-', _) => Ok(Token::Minus(range)),
+        ('*', _) => parse_comment(state),
+        (' ' | '\t' | ' ', _) => Ok(Token::Whitespace(range)),
+        ('\n', _) => Ok(Token::Newline(range)),
+        ('a'..='z' | 'A'..='Z' | '0'..='9' | '_', _) => parse_identifier(state),
+        _ => Err(String::from("No match.")),
     }
 }
 
-void _parseToken<T>({
-  @required _ScannerState state,
-  @required TokenType type,
-  @required bool Function(String char) selector,
-}) {
-  assert(state != null);
-  state.advanceWhile(selector);
-  state.addToken(type);
+fn parse_decimal_number(state: ScannerState) -> Result<Token, String> {
+    let number = state.advance_while(|c| ('0'..'9').contains(&c));
+    let number: u32 = match number.parse() {
+        Ok(number) => number,
+        Err(err) => return Err(String::from("Cannot parse decimal number.")),
+    };
+    Ok(Token::Number(state.range(), number))
 }
 
-void _parseDecimalNumber(_ScannerState state) => _parseToken(
-      state: state,
-      type: TokenType.number,
-      selector: _isDecimalDigit,
-    );
-void _parseHexNumber(_ScannerState state) {
-  assert(state != null);
-
-  if (state.peek() == '-') state.advance();
-  _parseToken(
-    state: state,
-    type: TokenType.number,
-    selector: _isHexDigit,
-  );
+fn parse_hex_number(state: ScannerState) -> Result<Token, String> {
+    let number = state.advance_while(|c| ('0'..'9').contains(&c) || ('a'..'f').contains(&c));
+    let number: u32 = match u32::from_str_radix(&number, 16) {
+        Ok(number) => number,
+        Err(err) => return Err(String::from("Cannot parse hex number.")),
+    };
+    Ok(Token::Number(state.range(), number))
 }
 
-void _parseComment(_ScannerState state) => _parseToken(
-      state: state,
-      type: TokenType.comment,
-      selector: (c) => !_newline.contains(c),
-    );
-void _parseIdentifier(_ScannerState state) => _parseToken(
-      state: state,
-      type: TokenType.identifier,
-      selector: _isLetterDigitUnderscore,
-    );
+fn parse_comment(state: ScannerState) -> Result<Token, String> {
+    let content = state.advance_while(|c| c != '\n');
+    Ok(Token::Comment(state.range(), content))
+}
+
+fn parse_identifier(state: ScannerState) -> Result<Token, String> {
+    let identifier = state.advance_while(|c| {
+        ('a'..='z').contains(&c) || ('A'..='Z').contains(&c) || ('0'..='9').contains(&c) || c == '_'
+    });
+    Ok(Token::Identifier(state.range(), identifier))
+}

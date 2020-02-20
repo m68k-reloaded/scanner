@@ -1,17 +1,29 @@
-enum Token {
-    OpeningParen(Location),
-    ClosingParen(Location),
-    Comma(Location),
-    Dot(Location),
-    Minus(Location),
-    Plus(Location),
-    NumberSign(Location), // #
-    Colon(Location),      // :
+/// A range in the original source code.
+pub struct Range(pub u16, pub u16);
+
+impl Range {
+    fn len(self) -> u16 {
+        self.1 - self.0
+    }
+}
+
+pub enum Token {
+    OpeningParen(Range),
+    ClosingParen(Range),
+    Comma(Range),
+    Dot(Range),
+    Minus(Range),
+    Plus(Range),
+    NumberSign(Range), // #
+    Colon(Range),      // :
 
     // Literals.
-    Comment(Location, String),
-    Identifier(Location, String),
-    Number(Location, u32),
+    Comment(Range, String),
+    Identifier(Range, String),
+    Number(Range, u32),
+
+    Whitespace(Range),
+    Newline(Range),
 }
 
 /*class Token {
