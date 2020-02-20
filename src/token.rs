@@ -1,11 +1,4 @@
-/// A range in the original source code.
-pub struct Range(pub u16, pub u16);
-
-impl Range {
-    pub fn len(self) -> u16 {
-        self.1 - self.0
-    }
-}
+pub type Range = std::ops::Range<usize>;
 
 pub enum Token {
     // Single characters.
