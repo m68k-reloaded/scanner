@@ -1,4 +1,4 @@
-#![feature(or_patterns)]
+// #![feature(or_patterns)]
 
 mod token;
 
@@ -7,12 +7,17 @@ use token::Token;
 
 fn main() {
     println!("Hello, world!");
-    let errors = vec![];
+    let source = "MOVE.W D3, D6";
+    let mut errors = vec![];
 
-    let tokens: Vec<Token> = scan("Hello, world!", &errors).collect();
+    let tokens: Vec<Token> = scan(source, &mut errors).collect();
+    for token in &tokens {
+        println!("{:?}", token);
+    }
+    println!("({} tokens)", tokens.len());
 }
 
-pub fn scan<'a, 'b>(source: &'a str, errors: &'b Vec<String>) -> Scanner<'a, 'b> {
+pub fn scan<'a, 'b>(source: &'a str, errors: &'b mut Vec<String>) -> Scanner<'a, 'b> {
     Scanner {
         errors,
         offset: 0,
@@ -21,41 +26,41 @@ pub fn scan<'a, 'b>(source: &'a str, errors: &'b Vec<String>) -> Scanner<'a, 'b>
     }
 }
 
-struct Scanner<'a, 'b> {
-    errors: &'b Vec<String>,
+pub struct Scanner<'a, 'b> {
+    errors: &'b mut Vec<String>,
     rest: &'a str, // The rest of the original source code.
     offset: usize, // The offset to the start of the original source.
     cursor: usize, // The cursor relative to the offset.
 }
 
 impl<'a> Scanner<'a, '_> {
-    fn is_at_end(self) -> bool {
-        self.rest.len() == 0
+    fn is_at_end(&self) -> bool {
+        self.rest.is_empty()
     }
 
-    fn flush(&self) {
+    fn flush(&mut self) {
         self.offset += self.cursor;
         self.rest = &self.rest[self.cursor..];
         self.cursor = 0;
     }
 
-    fn lexeme(self) -> String {
+    fn lexeme(&self) -> String {
         self.rest.chars().take(self.cursor).collect()
     }
 
-    fn peek(self) -> char {
+    fn peek(&self) -> char {
         match self.rest.chars().nth(0) {
             Some(character) => character,
             None => '\0',
         }
     }
 
-    fn advance(&self) -> char {
+    fn advance(&mut self) -> char {
         self.cursor += 1;
         self.peek()
     }
 
-    fn advance_while<Test>(&self, test: Test) -> String
+    fn advance_while<Test>(&mut self, test: Test) -> String
     where
         Test: Fn(char) -> bool,
     {
@@ -65,11 +70,11 @@ impl<'a> Scanner<'a, '_> {
         self.lexeme()
     }
 
-    fn range(self) -> Range {
+    fn range(&self) -> Range {
         self.offset..self.offset + self.cursor
     }
 
-    fn scan_next_token(&self) -> Result<Token, String> {
+    fn scan_next_token(&mut self) -> Result<Token, String> {
         self.flush();
 
         match (self.advance(), self.peek()) {
@@ -84,48 +89,56 @@ impl<'a> Scanner<'a, '_> {
             ('$', _) => self.parse_hex_number(),
             ('-', _) => Ok(Token::Minus(self.range())),
             ('*', _) => self.parse_comment(),
-            (' ' | '\t' | ' ', _) => Ok(Token::Whitespace(self.range())),
+            // TODO(marcelgarus): Merge the following branches into one as soon
+            // as or-patterns are supported.
+            (' ', _) => Ok(Token::Whitespace(self.range())),
+            ('\t', _) => Ok(Token::Whitespace(self.range())),
+            (' ', _) => Ok(Token::Whitespace(self.range())),
             ('\r', '\n') => {
                 self.advance();
                 Ok(Token::Newline(self.range()))
             }
             ('\n', _) => Ok(Token::Newline(self.range())),
-            ('a'..='z' | 'A'..='Z' | '0'..='9' | '_', _) => self.parse_identifier(),
+            // TODO(marcelgarus): Merge the following branches into one as soon
+            // as or-patterns are supported.
+            ('a'..='z', _) => self.parse_identifier(),
+            ('A'..='Z', _) => self.parse_identifier(),
+            ('_', _) => self.parse_identifier(),
             _ => Err(String::from("No match.")),
         }
     }
 
-    fn parse_decimal_number(&self) -> Result<Token, String> {
+    fn parse_decimal_number(&mut self) -> Result<Token, String> {
         let number = self.advance_while(|c| ('0'..'9').contains(&c));
         let number: u32 = match number.parse() {
             Ok(number) => number,
-            Err(err) => return Err(String::from("Cannot parse decimal number.")),
+            Err(_) => return Err(String::from("Cannot parse decimal number.")),
         };
         Ok(Token::Number(self.range(), number))
     }
 
-    fn parse_hex_number(&self) -> Result<Token, String> {
+    fn parse_hex_number(&mut self) -> Result<Token, String> {
         let number = self.advance_while(|c| ('0'..'9').contains(&c) || ('a'..'f').contains(&c));
         let number: u32 = match u32::from_str_radix(&number, 16) {
             Ok(number) => number,
-            Err(err) => return Err(String::from("Cannot parse hex number.")),
+            Err(_) => return Err(String::from("Cannot parse hex number.")),
         };
         Ok(Token::Number(self.range(), number))
     }
 
-    fn parse_comment(&self) -> Result<Token, String> {
+    fn parse_comment(&mut self) -> Result<Token, String> {
         let content = self.advance_while(|c| c != '\n');
-        Ok(Token::Comment(self.range(), String::from(content)))
+        Ok(Token::Comment(self.range(), content))
     }
 
-    fn parse_identifier(&self) -> Result<Token, String> {
+    fn parse_identifier(&mut self) -> Result<Token, String> {
         let identifier = self.advance_while(|c| {
             ('a'..='z').contains(&c)
                 || ('A'..='Z').contains(&c)
                 || ('0'..='9').contains(&c)
                 || c == '_'
         });
-        Ok(Token::Identifier(self.range(), String::from(identifier)))
+        Ok(Token::Identifier(self.range(), identifier))
     }
 }
 

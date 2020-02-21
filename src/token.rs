@@ -1,5 +1,6 @@
 pub type Range = std::ops::Range<usize>;
 
+#[derive(Debug)]
 pub enum Token {
     // Single characters.
     OpeningParen(Range), // (
