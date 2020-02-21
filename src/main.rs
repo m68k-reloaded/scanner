@@ -12,7 +12,7 @@ fn main() {
 
     let tokens: Vec<Token> = scan(source, &mut errors).collect();
     for token in &tokens {
-        println!("{:?}", token);
+        println!("Got token {:?}.", token);
     }
     println!("({} tokens)", tokens.len());
 }
@@ -49,15 +49,16 @@ impl<'a> Scanner<'a, '_> {
     }
 
     fn peek(&self) -> char {
-        match self.rest.chars().nth(0) {
+        match self.rest.chars().nth(self.cursor) {
             Some(character) => character,
             None => '\0',
         }
     }
 
     fn advance(&mut self) -> char {
+        let removed = self.peek();
         self.cursor += 1;
-        self.peek()
+        removed
     }
 
     fn advance_while<Test>(&mut self, test: Test) -> String
