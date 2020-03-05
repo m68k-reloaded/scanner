@@ -226,6 +226,31 @@ mod tests {
         expect_scanned_tokens(comment, vec![&Token::Comment(0..11, String::from(comment))]);
     }
 
+    #[test]
+    fn test_scan_identifier() {
+        let identifiers = vec![
+        "i",
+        "id",
+        "_id",
+        "id123",
+        "D0",
+        "D7",
+        "A0",
+        "A7",
+        "Loremipsumdolorsitametconsecteturadipiscingelit_Maurisvitaeerosblanditipsumviverraposuereetanibh_Curabiturnislmetuslaciniautmagnaultricieselementumtempormassa",
+        ];
+
+        for identifier in identifiers.iter() {
+            expect_scanned_tokens(
+                identifier,
+                vec![&Token::Identifier(
+                    0..identifier.len(),
+                    String::from(*identifier),
+                )],
+            );
+        }
+    }
+
     fn expect_scanned_tokens(source: &str, expected_tokens: Vec<&Token>) {
         let mut errors: Vec<String> = Vec::new();
         let tokens: Vec<Token> = scan(source, &mut errors).collect();
