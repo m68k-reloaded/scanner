@@ -22,7 +22,7 @@ pub struct Scanner<'a, 'b> {
 
 impl<'a> Scanner<'a, '_> {
     fn is_at_end(&self) -> bool {
-        self.rest.is_empty()
+        self.rest[self.cursor..].is_empty()
     }
 
     fn flush(&mut self) {
@@ -52,7 +52,7 @@ impl<'a> Scanner<'a, '_> {
     where
         Test: Fn(char) -> bool,
     {
-        while test(self.peek()) {
+        while !self.is_at_end() && test(self.peek()) {
             self.advance();
         }
         self.lexeme()
@@ -74,9 +74,10 @@ impl<'a> Scanner<'a, '_> {
             ('0'..='9', _) | ('-', '0'..='9') => self.parse_decimal_number(),
             ('$', _) => self.parse_hex_number(),
             ('-', _) => Ok(Token::Minus(self.range())),
+            // TODO(marcelgarus): Merge the following branches into one as soon as or-patterns are supported.
+            (';', _) => self.parse_comment(),
             ('*', _) => self.parse_comment(),
-            // TODO(marcelgarus): Merge the following branches into one as soon
-            // as or-patterns are supported.
+            // TODO(marcelgarus): Merge the following branches into one as soon as or-patterns are supported.
             (' ', _) => Ok(Token::Whitespace(self.range())),
             ('\t', _) => Ok(Token::Whitespace(self.range())),
             (' ', _) => Ok(Token::Whitespace(self.range())),
@@ -115,7 +116,7 @@ impl<'a> Scanner<'a, '_> {
     }
 
     fn parse_comment(&mut self) -> Result<Token, String> {
-        let content = self.advance_while(|c| c != '\n');
+        let content = self.advance_while(|c| c != '\n' && c != '\r');
         Ok(Token::Comment(self.range(), content))
     }
 
@@ -189,6 +190,47 @@ mod tests {
 
         for (source, expected) in tokens.iter() {
             expect_scanned_tokens(source, vec![expected]);
+        }
+    }
+
+    #[test]
+    fn test_scan_comment_empty() {
+        expect_scanned_tokens("*", vec![&Token::Comment(0..1, String::from("*"))]);
+        expect_scanned_tokens(";", vec![&Token::Comment(0..1, String::from(";"))]);
+    }
+    #[test]
+    fn test_scan_comment_simple() {
+        let comment = "*comment...";
+        expect_scanned_tokens(comment, vec![&Token::Comment(0..11, String::from(comment))]);
+    }
+    #[test]
+    fn test_scan_comment_unicode() {
+        let comment = "äöüß é¡™£¢∞§¶•ªº–≠製漢語 ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็❤️🇺🇸🇷🇺🇸 Ṱ̺̺̕o͞ ̷i̲̬͇̪͙n̝̗͕v̟̜̘̦͟o̶̙̰̠kè͚̮̺̪̹̱̤ ᴉlɐ";
+        expect_scanned_tokens(comment, vec![&Token::Comment(0..11, String::from(comment))]);
+    }
+
+    #[test]
+    fn test_scan_identifier() {
+        let identifiers = vec![
+        "i",
+        "id",
+        "_id",
+        "id123",
+        "D0",
+        "D7",
+        "A0",
+        "A7",
+        "Loremipsumdolorsitametconsecteturadipiscingelit_Maurisvitaeerosblanditipsumviverraposuereetanibh_Curabiturnislmetuslaciniautmagnaultricieselementumtempormassa",
+        ];
+
+        for identifier in identifiers.iter() {
+            expect_scanned_tokens(
+                identifier,
+                vec![&Token::Identifier(
+                    0..identifier.len(),
+                    String::from(*identifier),
+                )],
+            );
         }
     }
 
