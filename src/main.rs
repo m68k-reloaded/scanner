@@ -1,5 +1,3 @@
-// #![feature(or_patterns)]
-
 use m68k_reloaded_scanner::{scan, Token};
 
 fn main() {
