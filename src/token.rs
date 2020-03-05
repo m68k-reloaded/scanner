@@ -1,6 +1,6 @@
 pub use m68k_reloaded_common::Range;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Token {
   // Single characters.
   OpeningParen(Range), // (
