@@ -1,7 +1,7 @@
 use crate::token::{Range, Token};
-use m68k_reloaded_common::errors::{Error, ErrorCollector};
+use m68k_reloaded_common::errors::{Collector, Error};
 
-pub fn scan<'a, 'b>(source: &'a str, errors: &'b mut ErrorCollector) -> Scanner<'a, 'b> {
+pub fn scan<'s, 'e>(source: &'s str, errors: &'e mut Collector) -> Scanner<'s, 'e> {
     Scanner {
         offset: 0,
         rest: source,
@@ -10,17 +10,17 @@ pub fn scan<'a, 'b>(source: &'a str, errors: &'b mut ErrorCollector) -> Scanner<
     }
 }
 
-pub struct Scanner<'a, 'b> {
+pub struct Scanner<'s, 'e> {
     /// The rest of the original source code.
-    rest: &'a str,
+    rest: &'s str,
     /// The offset to the start of the original source.
     offset: usize,
     /// The cursor relative to the offset.
     cursor: usize,
-    errors: &'b mut ErrorCollector,
+    errors: &'e mut Collector,
 }
 
-impl<'a> Scanner<'a, '_> {
+impl<'s> Scanner<'s, '_> {
     fn is_at_end(&self) -> bool {
         self.rest[self.cursor..].is_empty()
     }
@@ -62,13 +62,6 @@ impl<'a> Scanner<'a, '_> {
         self.offset..self.offset + self.cursor
     }
 
-    fn error<T>(&self, message: &str) -> Result<T, Error> {
-        Err(Error {
-            range: self.range(),
-            message: String::from(message),
-        })
-    }
-
     fn scan_next_token(&mut self) -> Result<Token, Error> {
         let token = match (self.advance(), self.peek()) {
             ('(', _) => Ok(Token::OpeningParen(self.range())),
@@ -98,7 +91,7 @@ impl<'a> Scanner<'a, '_> {
             ('a'..='z', _) => self.parse_identifier(),
             ('A'..='Z', _) => self.parse_identifier(),
             ('_', _) => self.parse_identifier(),
-            (current, next) => self.error(&format!("No match: {}{}", current, next)),
+            (current, next) => Err(Error::no_match(self.range(), current, next)),
         };
         self.flush();
         token
@@ -108,7 +101,7 @@ impl<'a> Scanner<'a, '_> {
         let number = self.advance_while(|c| ('0'..'9').contains(&c));
         match number.parse() {
             Ok(number) => Ok(Token::Number(self.range(), number)),
-            Err(_) => self.error("Cannot parse decimal number."),
+            Err(_) => Err(Error::cannot_parse_decimal_number(self.range())),
         }
     }
 
@@ -116,7 +109,7 @@ impl<'a> Scanner<'a, '_> {
         let number = self.advance_while(|c| ('0'..'9').contains(&c) || ('a'..'f').contains(&c));
         match u32::from_str_radix(&number, 16) {
             Ok(number) => Ok(Token::Number(self.range(), number)),
-            Err(_) => self.error("Cannot parse hex number."),
+            Err(_) => Err(Error::cannot_parse_hex_number(self.range())),
         }
     }
 
@@ -244,8 +237,8 @@ mod tests {
         let mut errors = Default::default();
         let tokens: Vec<Token> = scan(source, &mut errors).collect();
 
-        errors.dump();
-        assert!(errors.has_no_errors());
+        errors.print();
+        assert!(errors.is_empty());
         assert_eq!(tokens.len(), expected_tokens.len());
         for (actual, expected) in tokens.iter().zip(expected_tokens.iter()) {
             assert_eq!(&actual, expected);
