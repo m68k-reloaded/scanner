@@ -1,23 +1,23 @@
 use crate::token::{Range, Token};
-use std::collections::HashMap;
+use m68k_reloaded_common::errors::{Error, ErrorCollector};
 
-pub fn scan<'a, 'b>(source: &'a str, errors: &'b mut Vec<String>) -> Scanner<'a, 'b> {
+pub fn scan<'a, 'b>(source: &'a str, errors: &'b mut ErrorCollector) -> Scanner<'a, 'b> {
     Scanner {
-        errors,
         offset: 0,
         rest: source,
         cursor: 0,
+        errors,
     }
 }
 
 pub struct Scanner<'a, 'b> {
-    errors: &'b mut Vec<String>,
     /// The rest of the original source code.
     rest: &'a str,
     /// The offset to the start of the original source.
     offset: usize,
     /// The cursor relative to the offset.
     cursor: usize,
+    errors: &'b mut ErrorCollector,
 }
 
 impl<'a> Scanner<'a, '_> {
@@ -62,7 +62,14 @@ impl<'a> Scanner<'a, '_> {
         self.offset..self.offset + self.cursor
     }
 
-    fn scan_next_token(&mut self) -> Result<Token, String> {
+    fn error<T>(&self, message: &str) -> Result<T, Error> {
+        Err(Error {
+            range: self.range(),
+            message: String::from(message),
+        })
+    }
+
+    fn scan_next_token(&mut self) -> Result<Token, Error> {
         let token = match (self.advance(), self.peek()) {
             ('(', _) => Ok(Token::OpeningParen(self.range())),
             (')', _) => Ok(Token::ClosingParen(self.range())),
@@ -90,36 +97,34 @@ impl<'a> Scanner<'a, '_> {
             ('a'..='z', _) => self.parse_identifier(),
             ('A'..='Z', _) => self.parse_identifier(),
             ('_', _) => self.parse_identifier(),
-            (current, next) => Err(format!("No match: {}{}", current, next)),
+            (current, next) => self.error(&format!("No match: {}{}", current, next)),
         };
         self.flush();
         token
     }
 
-    fn parse_decimal_number(&mut self) -> Result<Token, String> {
+    fn parse_decimal_number(&mut self) -> Result<Token, Error> {
         let number = self.advance_while(|c| ('0'..'9').contains(&c));
-        let number: u32 = match number.parse() {
-            Ok(number) => number,
-            Err(_) => return Err(String::from("Cannot parse decimal number.")),
-        };
-        Ok(Token::Number(self.range(), number))
+        match number.parse() {
+            Ok(number) => Ok(Token::Number(self.range(), number)),
+            Err(_) => self.error("Cannot parse decimal number."),
+        }
     }
 
-    fn parse_hex_number(&mut self) -> Result<Token, String> {
+    fn parse_hex_number(&mut self) -> Result<Token, Error> {
         let number = self.advance_while(|c| ('0'..'9').contains(&c) || ('a'..'f').contains(&c));
-        let number: u32 = match u32::from_str_radix(&number, 16) {
-            Ok(number) => number,
-            Err(_) => return Err(String::from("Cannot parse hex number.")),
-        };
-        Ok(Token::Number(self.range(), number))
+        match u32::from_str_radix(&number, 16) {
+            Ok(number) => Ok(Token::Number(self.range(), number)),
+            Err(_) => self.error("Cannot parse hex number."),
+        }
     }
 
-    fn parse_comment(&mut self) -> Result<Token, String> {
+    fn parse_comment(&mut self) -> Result<Token, Error> {
         let content = self.advance_while(|c| c != '\n');
         Ok(Token::Comment(self.range(), content))
     }
 
-    fn parse_identifier(&mut self) -> Result<Token, String> {
+    fn parse_identifier(&mut self) -> Result<Token, Error> {
         let identifier = self.advance_while(|c| {
             ('a'..='z').contains(&c)
                 || ('A'..='Z').contains(&c)
@@ -147,6 +152,7 @@ impl Iterator for Scanner<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_scan_empty_string() {
@@ -193,13 +199,11 @@ mod tests {
     }
 
     fn expect_scanned_tokens(source: &str, expected_tokens: Vec<&Token>) {
-        let mut errors: Vec<String> = Vec::new();
+        let mut errors = Default::default();
         let tokens: Vec<Token> = scan(source, &mut errors).collect();
 
-        if !errors.is_empty() {
-            println!("{:?}", errors);
-        }
-        assert_eq!(errors.len(), 0);
+        errors.dump();
+        assert!(errors.has_no_errors());
         assert_eq!(tokens.len(), expected_tokens.len());
         for (actual, expected) in tokens.iter().zip(expected_tokens.iter()) {
             assert_eq!(&actual, expected);
