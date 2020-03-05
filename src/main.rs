@@ -2,6 +2,7 @@
 
 mod token;
 
+use std::collections::HashMap;
 use token::Range;
 use token::Token;
 
@@ -28,9 +29,12 @@ pub fn scan<'a, 'b>(source: &'a str, errors: &'b mut Vec<String>) -> Scanner<'a,
 
 pub struct Scanner<'a, 'b> {
     errors: &'b mut Vec<String>,
-    rest: &'a str, // The rest of the original source code.
-    offset: usize, // The offset to the start of the original source.
-    cursor: usize, // The cursor relative to the offset.
+    /// The rest of the original source code.
+    rest: &'a str,
+    /// The offset to the start of the original source.
+    offset: usize,
+    /// The cursor relative to the offset.
+    cursor: usize,
 }
 
 impl<'a> Scanner<'a, '_> {
@@ -76,9 +80,7 @@ impl<'a> Scanner<'a, '_> {
     }
 
     fn scan_next_token(&mut self) -> Result<Token, String> {
-        self.flush();
-
-        match (self.advance(), self.peek()) {
+        let token = match (self.advance(), self.peek()) {
             ('(', _) => Ok(Token::OpeningParen(self.range())),
             (')', _) => Ok(Token::ClosingParen(self.range())),
             (',', _) => Ok(Token::Comma(self.range())),
@@ -105,8 +107,10 @@ impl<'a> Scanner<'a, '_> {
             ('a'..='z', _) => self.parse_identifier(),
             ('A'..='Z', _) => self.parse_identifier(),
             ('_', _) => self.parse_identifier(),
-            _ => Err(String::from("No match.")),
-        }
+            (current, next) => Err(format!("No match: {}{}", current, next)),
+        };
+        self.flush();
+        token
     }
 
     fn parse_decimal_number(&mut self) -> Result<Token, String> {
@@ -154,5 +158,68 @@ impl Iterator for Scanner<'_, '_> {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scan_empty_string() {
+        expect_scanned_tokens("", vec![]);
+    }
+    #[test]
+    fn test_scan_single_space() {
+        expect_scanned_tokens(" ", vec![&Token::Whitespace(0..1)]);
+    }
+    #[test]
+    fn test_scan_multiple_spaces() {
+        expect_scanned_tokens(
+            " \t",
+            vec![&Token::Whitespace(0..1), &Token::Whitespace(1..2)],
+        );
+    }
+    #[test]
+    fn test_scan_empty_lines() {
+        expect_scanned_tokens("\n\r\n", vec![&Token::Newline(0..1), &Token::Newline(1..3)]);
+    }
+
+    // TODO(marcelgarus): implement when we use line:col i/o Range
+    // #[test]
+    // fn test_correct_line_counting() {
+    //     expect_scanned_tokens("*1\n*2\r*3\r\n*4", vec![Token::Comment(Range(), "1")]);
+    // }
+
+    #[test]
+    fn test_scan_single_token() {
+        let mut tokens: HashMap<&str, Token> = HashMap::new();
+
+        tokens.insert("(", Token::OpeningParen(0..1));
+        tokens.insert(")", Token::ClosingParen(0..1));
+        tokens.insert(",", Token::Comma(0..1));
+        tokens.insert(".", Token::Dot(0..1));
+        tokens.insert("-", Token::Minus(0..1));
+        tokens.insert("+", Token::Plus(0..1));
+        tokens.insert("#", Token::NumberSign(0..1));
+        tokens.insert(":", Token::Colon(0..1));
+
+        for (source, expected) in tokens.iter() {
+            expect_scanned_tokens(source, vec![expected]);
+        }
+    }
+
+    fn expect_scanned_tokens(source: &str, expected_tokens: Vec<&Token>) {
+        let mut errors: Vec<String> = Vec::new();
+        let tokens: Vec<Token> = scan(source, &mut errors).collect();
+
+        if !errors.is_empty() {
+            println!("{:?}", errors);
+        }
+        assert_eq!(errors.len(), 0);
+        assert_eq!(tokens.len(), expected_tokens.len());
+        for (actual, expected) in tokens.iter().zip(expected_tokens.iter()) {
+            assert_eq!(&actual, expected);
+        }
     }
 }
